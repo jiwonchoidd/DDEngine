@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>DD_Engine - 3D Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            color: #fff;
+        }
+        
+        #container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            cursor: crosshair;
+        }
+        
+        #loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            transition: opacity 0.5s ease;
+        }
+        
+        #loading.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        
+        .loader-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 30px;
+            background: linear-gradient(90deg, #00d9ff, #00ff88);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .loader-bar {
+            width: 300px;
+            height: 6px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: 15px;
+        }
+        
+        .loader-progress {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #00d9ff, #00ff88);
+            border-radius: 3px;
+            transition: width 0.3s ease;
+        }
+        
+        .loader-text {
+            font-size: 0.9rem;
+            color: rgba(255,255,255,0.6);
+        }
+        
+        #controls {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            padding: 15px 20px;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(10px);
+            border-radius: 10px;
+            font-size: 0.85rem;
+            color: rgba(255,255,255,0.8);
+            line-height: 1.6;
+            max-width: 280px;
+        }
+        
+        #controls h3 {
+            color: #00d9ff;
+            margin-bottom: 10px;
+            font-size: 1rem;
+        }
+        
+        #controls kbd {
+            background: rgba(255,255,255,0.15);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.8rem;
+        }
+        
+        #fps {
+            position: fixed;
+            top: 15px;
+            right: 15px;
+            padding: 8px 15px;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(10px);
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-family: monospace;
+            color: #00ff88;
+        }
+        
+        #output {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">
+        <div class="loader-title">DD_Engine</div>
+        <div class="loader-bar">
+            <div class="loader-progress" id="progress"></div>
+        </div>
+        <div class="loader-text" id="status">Initializing...</div>
+    </div>
+    
+    <div id="container">
+        <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+    </div>
+    
+    <div id="controls">
+        <h3>🎮 Controls</h3>
+        <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> - Move</div>
+        <div><kbd>Mouse</kbd> - Look around</div>
+        <div><kbd>Click</kbd> - Capture mouse</div>
+    </div>
+    
+    <div id="fps">-- FPS</div>
+    <div id="output"></div>
+    
+    <script>
+        var loadingDiv = document.getElementById('loading');
+        var progressBar = document.getElementById('progress');
+        var statusText = document.getElementById('status');
+        var fpsDisplay = document.getElementById('fps');
+        
+        // FPS counter
+        var frameCount = 0;
+        var lastTime = performance.now();
+        
+        function updateFPS() {
+            frameCount++;
+            var now = performance.now();
+            if (now - lastTime >= 1000) {
+                fpsDisplay.textContent = frameCount + ' FPS';
+                frameCount = 0;
+                lastTime = now;
+            }
+            requestAnimationFrame(updateFPS);
+        }
+        
+        // Handle window resize
+        function resizeCanvas() {
+            var canvas = document.getElementById('canvas');
+            var displayWidth = window.innerWidth;
+            var displayHeight = window.innerHeight;
+            
+            // Set the canvas size to match the display size
+            if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
+                canvas.width = displayWidth;
+                canvas.height = displayHeight;
+            }
+        }
+        
+        // Initial resize
+        resizeCanvas();
+        
+        // Listen for window resize
+        window.addEventListener('resize', resizeCanvas);
+        
+        var Module = {
+            canvas: (function() {
+                var canvas = document.getElementById('canvas');
+                canvas.addEventListener("webglcontextlost", function(e) {
+                    alert('WebGL context lost. Please reload the page.');
+                    e.preventDefault();
+                }, false);
+                return canvas;
+            })(),
+            
+            print: function(text) {
+                console.log(text);
+            },
+            
+            printErr: function(text) {
+                console.error(text);
+            },
+            
+            setStatus: function(text) {
+                if (text) {
+                    statusText.textContent = text;
+                } else {
+                    // Loading complete
+                    loadingDiv.classList.add('hidden');
+                    updateFPS();
+                }
+            },
+            
+            totalDependencies: 0,
+            monitorRunDependencies: function(left) {
+                this.totalDependencies = Math.max(this.totalDependencies, left);
+                var progress = this.totalDependencies > 0 
+                    ? ((this.totalDependencies - left) / this.totalDependencies) * 100 
+                    : 0;
+                progressBar.style.width = progress + '%';
+                
+                if (left) {
+                    Module.setStatus('Loading... (' + (this.totalDependencies - left) + '/' + this.totalDependencies + ')');
+                } else {
+                    Module.setStatus('');
+                }
+            },
+            
+            onRuntimeInitialized: function() {
+                console.log('DD_Engine initialized!');
+            }
+        };
+        
+        Module.setStatus('Downloading...');
+        
+        window.onerror = function(msg, url, line) {
+            statusText.textContent = 'Error: ' + msg;
+            statusText.style.color = '#ff4444';
+            console.error('Error at ' + url + ':' + line + ' - ' + msg);
+            return true;
+        };
+    </script>
+    <script async type="text/javascript" src="DD_Sample.js"></script>
+</body>
+</html>
