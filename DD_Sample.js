@@ -3854,6 +3854,102 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
   var __abort_js = () =>
       abort('native code called abort()');
 
+  var jsStackTrace = () => new Error().stack.toString();
+  
+  /** @param {number=} flags */
+  var getCallstack = (flags) => {
+      var callstack = jsStackTrace();
+  
+      if (flags & 8) {
+        warnOnce('emscripten_log with EM_LOG_C_STACK no longer has any effect');
+      }
+  
+      // Process all lines:
+      var lines = callstack.split('\n');
+      callstack = '';
+      // Extract components of form:
+      // '       Object._main@http://server.com:4324:12'
+      var firefoxRe = new RegExp('\\s*(.*?)@(.*?):([0-9]+):([0-9]+)');
+      // Extract components of form:
+      // '    at Object._main (http://server.com/file.html:4324:12)'
+      var chromeRe = new RegExp('\\s*at (.*?) \\\((.*):(.*):(.*)\\\)');
+  
+      for (var line of lines) {
+        var symbolName = '';
+        var file = '';
+        var lineno = 0;
+        var column = 0;
+  
+        var parts = chromeRe.exec(line);
+        if (parts?.length == 5) {
+          symbolName = parts[1];
+          file = parts[2];
+          lineno = parts[3];
+          column = parts[4];
+        } else {
+          parts = firefoxRe.exec(line);
+          if (parts?.length >= 4) {
+            symbolName = parts[1];
+            file = parts[2];
+            lineno = parts[3];
+            // Old Firefox doesn't carry column information, but in new FF30, it
+            // is present. See https://bugzil.la/762556
+            column = parts[4]|0;
+          } else {
+            // Was not able to extract this line for demangling/sourcemapping
+            // purposes. Output it as-is.
+            callstack += line + '\n';
+            continue;
+          }
+        }
+  
+        // Find the symbols in the callstack that corresponds to the functions that
+        // report callstack information, and remove everything up to these from the
+        // output.
+        if (symbolName == '_emscripten_log' || symbolName == '_emscripten_get_callstack') {
+          callstack = '';
+          continue;
+        }
+  
+        if ((flags & 24)) {
+          if (flags & 64) {
+            file = file.substring(file.replace(/\\/g, "/").lastIndexOf('/')+1);
+          }
+          callstack += `    at ${symbolName} (${file}:${lineno}:${column})\n`;
+        }
+      }
+      // Trim extra whitespace at the end of the output.
+      callstack = callstack.replace(/\s+$/, '');
+      return callstack;
+    };
+  
+  var __emscripten_log_formatted = (flags, str) => {
+      str = UTF8ToString(str);
+  
+      if (flags & 24) {
+        str = str.replace(/\s+$/, ''); // Ensure the message and the callstack are joined cleanly with exactly one newline.
+        str += (str.length > 0 ? '\n' : '') + getCallstack(flags);
+      }
+  
+      if (flags & 1) {
+        if (flags & 4) {
+          console.error(str);
+        } else if (flags & 2) {
+          console.warn(str);
+        } else if (flags & 512) {
+          console.info(str);
+        } else if (flags & 256) {
+          console.debug(str);
+        } else {
+          console.log(str);
+        }
+      } else if (flags & 6) {
+        err(str);
+      } else {
+        out(str);
+      }
+    };
+
   var stringToUTF8 = (str, outPtr, maxBytesToWrite) => {
       assert(typeof maxBytesToWrite == 'number', 'stringToUTF8(str, outPtr, maxBytesToWrite) is missing the third parameter that specifies the length of the output buffer!');
       return stringToUTF8Array(str, HEAPU8, outPtr, maxBytesToWrite);
@@ -8358,8 +8454,6 @@ if (Module['wasmBinary']) wasmBinary = Module['wasmBinary'];
   'registerBatteryEventCallback',
   'setCanvasElementSize',
   'getCanvasElementSize',
-  'jsStackTrace',
-  'getCallstack',
   'convertPCtoSourceLocation',
   'wasiRightsToMuslOFlags',
   'wasiOFlagsToMuslOFlags',
@@ -8492,6 +8586,8 @@ missingLibrarySymbols.forEach(missingLibrarySymbol)
   'currentFullscreenStrategy',
   'restoreOldWindowedStyle',
   'registerTouchEventCallback',
+  'jsStackTrace',
+  'getCallstack',
   'UNWIND_CACHE',
   'ExitStatus',
   'getEnvStrings',
@@ -8758,6 +8854,8 @@ var wasmImports = {
   __syscall_openat: ___syscall_openat,
   /** @export */
   _abort_js: __abort_js,
+  /** @export */
+  _emscripten_log_formatted: __emscripten_log_formatted,
   /** @export */
   _tzset_js: __tzset_js,
   /** @export */

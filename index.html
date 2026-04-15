@@ -118,21 +118,78 @@
             font-size: 0.8rem;
         }
         
-        #fps {
+        /* Bottom-right console dock: button under log panel so “Console” sits at the bottom edge */
+        #consoleDock {
             position: fixed;
-            top: 15px;
-            right: 15px;
-            padding: 8px 15px;
-            background: rgba(0, 0, 0, 0.5);
-            backdrop-filter: blur(10px);
-            border-radius: 6px;
-            font-size: 0.85rem;
-            font-family: monospace;
-            color: #00ff88;
+            right: 20px;
+            bottom: 20px;
+            z-index: 200;
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 8px;
+            width: min(720px, calc(100vw - 40px));
+            max-width: calc(100vw - 40px);
+            pointer-events: none;
         }
-        
+        #consoleDock > * {
+            pointer-events: auto;
+        }
+
+        #toggleOutput {
+            align-self: flex-end;
+            padding: 8px 16px;
+            background: #008cff;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-family: inherit;
+            font-weight: 600;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+        }
+        #toggleOutput:hover {
+            background: #00aaff;
+        }
+        #toggleOutput:focus-visible {
+            outline: 2px solid #00ff88;
+            outline-offset: 2px;
+        }
+
+        /* Readonly textarea: reliable drag-select + Ctrl+C vs <pre> under pointer-lock / GL */
         #output {
             display: none;
+            order: -1;
+            width: 100%;
+            min-height: 120px;
+            max-height: min(40vh, 360px);
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 12px 14px;
+            margin: 0;
+            background: linear-gradient(135deg, rgba(20, 20, 20, 0.94), rgba(40, 40, 40, 0.88));
+            color: #d6ffd6;
+            font: 12px/1.5 Consolas, "Courier New", monospace;
+            border-radius: 10px;
+            border: 1px solid rgba(0, 217, 255, 0.35);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6), inset 0 0 8px rgba(0, 217, 255, 0.15);
+            white-space: pre-wrap;
+            word-break: break-word;
+            resize: none;
+            cursor: text;
+            touch-action: pan-y;
+            -webkit-user-select: text;
+            user-select: text;
+            backdrop-filter: blur(6px);
+            overscroll-behavior: contain;
+        }
+        #output.is-visible {
+            display: block;
+        }
+        #output::selection {
+            background: rgba(0, 217, 255, 0.35);
+            color: #fff;
         }
     </style>
 </head>
@@ -156,28 +213,71 @@
         <div><kbd>Click</kbd> - Capture mouse</div>
     </div>
     
-    <div id="fps">-- FPS</div>
-    <div id="output"></div>
+    <div id="consoleDock">
+        <textarea id="output" readonly rows="10" aria-label="Engine log" spellcheck="false" autocomplete="off"></textarea>
+        <button type="button" id="toggleOutput" aria-controls="output" aria-expanded="false">Console</button>
+    </div>
     
     <script>
         var loadingDiv = document.getElementById('loading');
         var progressBar = document.getElementById('progress');
         var statusText = document.getElementById('status');
-        var fpsDisplay = document.getElementById('fps');
-        
-        // FPS counter
-        var frameCount = 0;
-        var lastTime = performance.now();
-        
-        function updateFPS() {
-            frameCount++;
-            var now = performance.now();
-            if (now - lastTime >= 1000) {
-                fpsDisplay.textContent = frameCount + ' FPS';
-                frameCount = 0;
-                lastTime = now;
+        var outputEl = document.getElementById('output');
+        var toggleBtn = document.getElementById('toggleOutput');
+        var outputMaxLines = 650;
+
+        function isOutputVisible() {
+            return outputEl && outputEl.classList.contains('is-visible');
+        }
+
+        function trimOutputLines() {
+            if (!outputEl || !outputEl.value) return;
+            var lines = outputEl.value.split('\n');
+            if (lines.length > outputMaxLines) {
+                var drop = lines.length - Math.floor(outputMaxLines * 0.85);
+                outputEl.value = lines.slice(drop).join('\n');
             }
-            requestAnimationFrame(updateFPS);
+        }
+
+        /* Keep log interactions from bubbling to the canvas / runtime glue */
+        if (outputEl) {
+            ['mousedown', 'mouseup', 'click', 'dblclick', 'contextmenu', 'pointerdown', 'pointerup'].forEach(function (ev) {
+                outputEl.addEventListener(ev, function (e) { e.stopPropagation(); }, true);
+            });
+        }
+
+        /** print / printErr: scroll to end when visible; stderr opens panel */
+        function appendEngineLog(text, isErr) {
+            if (!outputEl) return;
+            var s = String(text);
+            if (s.length && !s.endsWith('\n')) s += '\n';
+            outputEl.value += s;
+            trimOutputLines();
+            if (isErr) {
+                outputEl.classList.add('is-visible');
+                if (toggleBtn) {
+                    toggleBtn.textContent = 'Hide console';
+                    toggleBtn.setAttribute('aria-expanded', 'true');
+                }
+            }
+            if (isOutputVisible()) {
+                outputEl.scrollTop = outputEl.scrollHeight;
+            }
+        }
+
+        if (toggleBtn && outputEl) {
+            toggleBtn.addEventListener('click', function () {
+                var vis = outputEl.classList.toggle('is-visible');
+                toggleBtn.textContent = vis ? 'Hide console' : 'Console';
+                toggleBtn.setAttribute('aria-expanded', vis ? 'true' : 'false');
+                if (vis) {
+                    if (!outputEl.value || outputEl.value.trim() === '') {
+                        outputEl.value = 'Engine log output will appear here.\n(This panel opens automatically on errors.)\n';
+                    }
+                    outputEl.scrollTop = outputEl.scrollHeight;
+                    try { outputEl.focus(); } catch (e) {}
+                }
+            });
         }
         
         // Handle window resize
@@ -211,10 +311,12 @@
             
             print: function(text) {
                 console.log(text);
+                appendEngineLog(text, false);
             },
             
             printErr: function(text) {
                 console.error(text);
+                appendEngineLog('[stderr] ' + text, true);
             },
             
             setStatus: function(text) {
@@ -223,7 +325,6 @@
                 } else {
                     // Loading complete
                     loadingDiv.classList.add('hidden');
-                    updateFPS();
                 }
             },
             
@@ -253,6 +354,7 @@
             statusText.textContent = 'Error: ' + msg;
             statusText.style.color = '#ff4444';
             console.error('Error at ' + url + ':' + line + ' - ' + msg);
+            appendEngineLog('[JS] ' + msg + ' @ ' + url + ':' + line, true);
             return true;
         };
     </script>
