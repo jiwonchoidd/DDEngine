@@ -71,7 +71,7 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
 
 // --pre-jses are emitted after the Module integration code, so that they can
 // refer to Module (if they choose; they can also define Module)
-// include: C:\Users\popo2\AppData\Local\Temp\tmpz8rh4d1c.js
+// include: C:\Users\popo2\AppData\Local\Temp\tmpx_2cubic.js
 
   if (!Module['expectedDataFileDownloads']) Module['expectedDataFileDownloads'] = 0;
   Module['expectedDataFileDownloads']++;
@@ -204,21 +204,21 @@ Module['FS_createPath']("/", "Asset", true, true);
 
   })();
 
-// end include: C:\Users\popo2\AppData\Local\Temp\tmpz8rh4d1c.js
-// include: C:\Users\popo2\AppData\Local\Temp\tmpxmj7qc_6.js
+// end include: C:\Users\popo2\AppData\Local\Temp\tmpx_2cubic.js
+// include: C:\Users\popo2\AppData\Local\Temp\tmp93ucj_if.js
 
     // All the pre-js content up to here must remain later on, we need to run
     // it.
     if ((typeof ENVIRONMENT_IS_WASM_WORKER != 'undefined' && ENVIRONMENT_IS_WASM_WORKER) || (typeof ENVIRONMENT_IS_PTHREAD != 'undefined' && ENVIRONMENT_IS_PTHREAD) || (typeof ENVIRONMENT_IS_AUDIO_WORKLET != 'undefined' && ENVIRONMENT_IS_AUDIO_WORKLET)) Module['preRun'] = [];
     var necessaryPreJSTasks = Module['preRun'].slice();
-  // end include: C:\Users\popo2\AppData\Local\Temp\tmpxmj7qc_6.js
-// include: C:\Users\popo2\AppData\Local\Temp\tmpfje6b2zq.js
+  // end include: C:\Users\popo2\AppData\Local\Temp\tmp93ucj_if.js
+// include: C:\Users\popo2\AppData\Local\Temp\tmpcgk9t4w_.js
 
     if (!Module['preRun']) throw 'Module.preRun should exist because file support used it; did a pre-js delete it?';
     necessaryPreJSTasks.forEach((task) => {
       if (Module['preRun'].indexOf(task) < 0) throw 'All preRun tasks that exist before user pre-js code should remain after; did you replace Module or modify Module.preRun?';
     });
-  // end include: C:\Users\popo2\AppData\Local\Temp\tmpfje6b2zq.js
+  // end include: C:\Users\popo2\AppData\Local\Temp\tmpcgk9t4w_.js
 
 
 var arguments_ = [];
@@ -6053,6 +6053,11 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
     };
   var _glDrawElements = _emscripten_glDrawElements;
 
+  var _emscripten_glDrawElementsInstanced = (mode, count, type, indices, primcount) => {
+      GLctx.drawElementsInstanced(mode, count, type, indices, primcount);
+    };
+  var _glDrawElementsInstanced = _emscripten_glDrawElementsInstanced;
+
   var _emscripten_glEnable = (x0) => GLctx.enable(x0);
   var _glEnable = _emscripten_glEnable;
 
@@ -6107,6 +6112,167 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
 
   var _emscripten_glGenerateMipmap = (x0) => GLctx.generateMipmap(x0);
   var _glGenerateMipmap = _emscripten_glGenerateMipmap;
+
+  var readI53FromI64 = (ptr) => {
+      return HEAPU32[((ptr)>>2)] + HEAP32[(((ptr)+(4))>>2)] * 4294967296;
+    };
+  
+  var readI53FromU64 = (ptr) => {
+      return HEAPU32[((ptr)>>2)] + HEAPU32[(((ptr)+(4))>>2)] * 4294967296;
+    };
+  var writeI53ToI64 = (ptr, num) => {
+      HEAPU32[((ptr)>>2)] = num;
+      var lower = HEAPU32[((ptr)>>2)];
+      HEAPU32[(((ptr)+(4))>>2)] = (num - lower)/4294967296;
+      var deserialized = (num >= 0) ? readI53FromU64(ptr) : readI53FromI64(ptr);
+      var offset = ((ptr)>>2);
+      if (deserialized != num) warnOnce(`writeI53ToI64() out of range: serialized JS Number ${num} to Wasm heap as bytes lo=${ptrToString(HEAPU32[offset])}, hi=${ptrToString(HEAPU32[offset+1])}, which deserializes back to ${deserialized} instead!`);
+    };
+  
+  
+  var webglGetExtensions = () => {
+      var exts = getEmscriptenSupportedExtensions(GLctx);
+      exts = exts.concat(exts.map((e) => "GL_" + e));
+      return exts;
+    };
+  
+  var emscriptenWebGLGet = (name_, p, type) => {
+      // Guard against user passing a null pointer.
+      // Note that GLES2 spec does not say anything about how passing a null
+      // pointer should be treated.  Testing on desktop core GL 3, the application
+      // crashes on glGetIntegerv to a null pointer, but better to report an error
+      // instead of doing anything random.
+      if (!p) {
+        GL.recordError(0x501 /* GL_INVALID_VALUE */);
+        return;
+      }
+      var ret = undefined;
+      switch (name_) { // Handle a few trivial GLES values
+        case 0x8DFA: // GL_SHADER_COMPILER
+          ret = 1;
+          break;
+        case 0x8DF8: // GL_SHADER_BINARY_FORMATS
+          if (type != 0 && type != 1) {
+            GL.recordError(0x500); // GL_INVALID_ENUM
+          }
+          // Do not write anything to the out pointer, since no binary formats are
+          // supported.
+          return;
+        case 0x87FE: // GL_NUM_PROGRAM_BINARY_FORMATS
+        case 0x8DF9: // GL_NUM_SHADER_BINARY_FORMATS
+          ret = 0;
+          break;
+        case 0x86A2: // GL_NUM_COMPRESSED_TEXTURE_FORMATS
+          // WebGL doesn't have GL_NUM_COMPRESSED_TEXTURE_FORMATS (it's obsolete
+          // since GL_COMPRESSED_TEXTURE_FORMATS returns a JS array that can be
+          // queried for length), so implement it ourselves to allow C++ GLES2
+          // code to get the length.
+          var formats = GLctx.getParameter(0x86A3 /*GL_COMPRESSED_TEXTURE_FORMATS*/);
+          ret = formats ? formats.length : 0;
+          break;
+  
+        case 0x821D: // GL_NUM_EXTENSIONS
+          if (GL.currentContext.version < 2) {
+            // Calling GLES3/WebGL2 function with a GLES2/WebGL1 context
+            GL.recordError(0x502 /* GL_INVALID_OPERATION */);
+            return;
+          }
+          ret = webglGetExtensions().length;
+          break;
+        case 0x821B: // GL_MAJOR_VERSION
+        case 0x821C: // GL_MINOR_VERSION
+          if (GL.currentContext.version < 2) {
+            GL.recordError(0x500); // GL_INVALID_ENUM
+            return;
+          }
+          ret = name_ == 0x821B ? 3 : 0; // return version 3.0
+          break;
+      }
+  
+      if (ret === undefined) {
+        var result = GLctx.getParameter(name_);
+        switch (typeof result) {
+          case "number":
+            ret = result;
+            break;
+          case "boolean":
+            ret = result ? 1 : 0;
+            break;
+          case "string":
+            GL.recordError(0x500); // GL_INVALID_ENUM
+            return;
+          case "object":
+            if (result === null) {
+              // null is a valid result for some (e.g., which buffer is bound -
+              // perhaps nothing is bound), but otherwise can mean an invalid
+              // name_, which we need to report as an error
+              switch (name_) {
+                case 0x8894: // ARRAY_BUFFER_BINDING
+                case 0x8B8D: // CURRENT_PROGRAM
+                case 0x8895: // ELEMENT_ARRAY_BUFFER_BINDING
+                case 0x8CA6: // FRAMEBUFFER_BINDING or DRAW_FRAMEBUFFER_BINDING
+                case 0x8CA7: // RENDERBUFFER_BINDING
+                case 0x8069: // TEXTURE_BINDING_2D
+                case 0x85B5: // WebGL 2 GL_VERTEX_ARRAY_BINDING, or WebGL 1 extension OES_vertex_array_object GL_VERTEX_ARRAY_BINDING_OES
+                case 0x8F36: // COPY_READ_BUFFER_BINDING or COPY_READ_BUFFER
+                case 0x8F37: // COPY_WRITE_BUFFER_BINDING or COPY_WRITE_BUFFER
+                case 0x88ED: // PIXEL_PACK_BUFFER_BINDING
+                case 0x88EF: // PIXEL_UNPACK_BUFFER_BINDING
+                case 0x8CAA: // READ_FRAMEBUFFER_BINDING
+                case 0x8919: // SAMPLER_BINDING
+                case 0x8C1D: // TEXTURE_BINDING_2D_ARRAY
+                case 0x806A: // TEXTURE_BINDING_3D
+                case 0x8E25: // TRANSFORM_FEEDBACK_BINDING
+                case 0x8C8F: // TRANSFORM_FEEDBACK_BUFFER_BINDING
+                case 0x8A28: // UNIFORM_BUFFER_BINDING
+                case 0x8514: { // TEXTURE_BINDING_CUBE_MAP
+                  ret = 0;
+                  break;
+                }
+                default: {
+                  GL.recordError(0x500); // GL_INVALID_ENUM
+                  return;
+                }
+              }
+            } else if (result instanceof Float32Array ||
+                       result instanceof Uint32Array ||
+                       result instanceof Int32Array ||
+                       result instanceof Array) {
+              for (var i = 0; i < result.length; ++i) {
+                switch (type) {
+                  case 0: HEAP32[(((p)+(i*4))>>2)] = result[i]; break;
+                  case 2: HEAPF32[(((p)+(i*4))>>2)] = result[i]; break;
+                  case 4: HEAP8[(p)+(i)] = result[i] ? 1 : 0; break;
+                }
+              }
+              return;
+            } else {
+              try {
+                ret = result.name | 0;
+              } catch(e) {
+                GL.recordError(0x500); // GL_INVALID_ENUM
+                err(`GL_INVALID_ENUM in glGet${type}v: Unknown object returned from WebGL getParameter(${name_})! (error: ${e})`);
+                return;
+              }
+            }
+            break;
+          default:
+            GL.recordError(0x500); // GL_INVALID_ENUM
+            err(`GL_INVALID_ENUM in glGet${type}v: Native code calling glGet${type}v(${name_}) and it returns ${result} of type ${typeof(result)}!`);
+            return;
+        }
+      }
+  
+      switch (type) {
+        case 1: writeI53ToI64(p, ret); break;
+        case 0: HEAP32[((p)>>2)] = ret; break;
+        case 2:   HEAPF32[((p)>>2)] = ret; break;
+        case 4: HEAP8[p] = ret ? 1 : 0; break;
+      }
+    };
+  
+  var _emscripten_glGetIntegerv = (name_, p) => emscriptenWebGLGet(name_, p, 0);
+  var _glGetIntegerv = _emscripten_glGetIntegerv;
 
   var _emscripten_glGetProgramInfoLog = (program, maxLength, length, infoLog) => {
       var log = GLctx.getProgramInfoLog(GL.programs[program]);
@@ -6213,12 +6379,6 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
       return ret;
     };
   
-  
-  var webglGetExtensions = () => {
-      var exts = getEmscriptenSupportedExtensions(GLctx);
-      exts = exts.concat(exts.map((e) => "GL_" + e));
-      return exts;
-    };
   
   var _emscripten_glGetString = (name_) => {
       var ret = GL.stringCache[name_];
@@ -6385,6 +6545,9 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
 
   var _emscripten_glRenderbufferStorage = (x0, x1, x2, x3) => GLctx.renderbufferStorage(x0, x1, x2, x3);
   var _glRenderbufferStorage = _emscripten_glRenderbufferStorage;
+
+  var _emscripten_glScissor = (x0, x1, x2, x3) => GLctx.scissor(x0, x1, x2, x3);
+  var _glScissor = _emscripten_glScissor;
 
   var _emscripten_glShaderSource = (shader, count, string, length) => {
       var source = GL.getSource(shader, count, string, length);
@@ -8590,13 +8753,10 @@ if (Module['wasmBinary']) wasmBinary = Module['wasmBinary'];
   Module['FS_createDataFile'] = FS_createDataFile;
   Module['FS_createLazyFile'] = FS_createLazyFile;
   var missingLibrarySymbols = [
-  'writeI53ToI64',
   'writeI53ToI64Clamped',
   'writeI53ToI64Signaling',
   'writeI53ToU64Clamped',
   'writeI53ToU64Signaling',
-  'readI53FromI64',
-  'readI53FromU64',
   'convertI32PairToI53',
   'convertI32PairToI53Checked',
   'convertU32PairToI53',
@@ -8698,7 +8858,6 @@ if (Module['wasmBinary']) wasmBinary = Module['wasmBinary'];
   'getSocketAddress',
   'FS_mkdirTree',
   '_setNetworkCallback',
-  'emscriptenWebGLGet',
   'emscriptenWebGLGetUniform',
   'emscriptenWebGLGetVertexAttrib',
   '__glGetActiveAttribOrUniform',
@@ -8730,6 +8889,9 @@ missingLibrarySymbols.forEach(missingLibrarySymbol)
   'wasmExports',
   'writeStackCookie',
   'checkStackCookie',
+  'writeI53ToI64',
+  'readI53FromI64',
+  'readI53FromU64',
   'INT53_MAX',
   'INT53_MIN',
   'bigintToI53Checked',
@@ -8966,6 +9128,7 @@ missingLibrarySymbols.forEach(missingLibrarySymbol)
   'webgl_enable_EXT_clip_control',
   'webgl_enable_WEBGL_polygon_mode',
   'GL',
+  'emscriptenWebGLGet',
   'computeUnpackAlignedImageSize',
   'colorChannelsInGlTextureFormat',
   'emscriptenWebGLGetTexPixelData',
@@ -9009,10 +9172,11 @@ function checkIncomingModuleAPI() {
 var _main = Module['_main'] = makeInvalidEarlyAccess('_main');
 var _free = makeInvalidEarlyAccess('_free');
 var _malloc = makeInvalidEarlyAccess('_malloc');
+var _strerror = makeInvalidEarlyAccess('_strerror');
 var _fflush = makeInvalidEarlyAccess('_fflush');
 var _emscripten_stack_get_end = makeInvalidEarlyAccess('_emscripten_stack_get_end');
 var _emscripten_stack_get_base = makeInvalidEarlyAccess('_emscripten_stack_get_base');
-var _strerror = makeInvalidEarlyAccess('_strerror');
+var _setThrew = makeInvalidEarlyAccess('_setThrew');
 var _emscripten_stack_init = makeInvalidEarlyAccess('_emscripten_stack_init');
 var _emscripten_stack_get_free = makeInvalidEarlyAccess('_emscripten_stack_get_free');
 var __emscripten_stack_restore = makeInvalidEarlyAccess('__emscripten_stack_restore');
@@ -9027,10 +9191,11 @@ function assignWasmExports(wasmExports) {
   assert(typeof wasmExports['__main_argc_argv'] != 'undefined', 'missing Wasm export: __main_argc_argv');
   assert(typeof wasmExports['free'] != 'undefined', 'missing Wasm export: free');
   assert(typeof wasmExports['malloc'] != 'undefined', 'missing Wasm export: malloc');
+  assert(typeof wasmExports['strerror'] != 'undefined', 'missing Wasm export: strerror');
   assert(typeof wasmExports['fflush'] != 'undefined', 'missing Wasm export: fflush');
   assert(typeof wasmExports['emscripten_stack_get_end'] != 'undefined', 'missing Wasm export: emscripten_stack_get_end');
   assert(typeof wasmExports['emscripten_stack_get_base'] != 'undefined', 'missing Wasm export: emscripten_stack_get_base');
-  assert(typeof wasmExports['strerror'] != 'undefined', 'missing Wasm export: strerror');
+  assert(typeof wasmExports['setThrew'] != 'undefined', 'missing Wasm export: setThrew');
   assert(typeof wasmExports['emscripten_stack_init'] != 'undefined', 'missing Wasm export: emscripten_stack_init');
   assert(typeof wasmExports['emscripten_stack_get_free'] != 'undefined', 'missing Wasm export: emscripten_stack_get_free');
   assert(typeof wasmExports['_emscripten_stack_restore'] != 'undefined', 'missing Wasm export: _emscripten_stack_restore');
@@ -9041,10 +9206,11 @@ function assignWasmExports(wasmExports) {
   _main = Module['_main'] = createExportWrapper('__main_argc_argv', 2);
   _free = createExportWrapper('free', 1);
   _malloc = createExportWrapper('malloc', 1);
+  _strerror = createExportWrapper('strerror', 1);
   _fflush = createExportWrapper('fflush', 1);
   _emscripten_stack_get_end = wasmExports['emscripten_stack_get_end'];
   _emscripten_stack_get_base = wasmExports['emscripten_stack_get_base'];
-  _strerror = createExportWrapper('strerror', 1);
+  _setThrew = createExportWrapper('setThrew', 2);
   _emscripten_stack_init = wasmExports['emscripten_stack_init'];
   _emscripten_stack_get_free = wasmExports['emscripten_stack_get_free'];
   __emscripten_stack_restore = wasmExports['_emscripten_stack_restore'];
@@ -9182,6 +9348,8 @@ var wasmImports = {
   /** @export */
   glDrawElements: _glDrawElements,
   /** @export */
+  glDrawElementsInstanced: _glDrawElementsInstanced,
+  /** @export */
   glEnable: _glEnable,
   /** @export */
   glEnableVertexAttribArray: _glEnableVertexAttribArray,
@@ -9202,6 +9370,8 @@ var wasmImports = {
   /** @export */
   glGenerateMipmap: _glGenerateMipmap,
   /** @export */
+  glGetIntegerv: _glGetIntegerv,
+  /** @export */
   glGetProgramInfoLog: _glGetProgramInfoLog,
   /** @export */
   glGetProgramiv: _glGetProgramiv,
@@ -9221,6 +9391,8 @@ var wasmImports = {
   glPolygonOffset: _glPolygonOffset,
   /** @export */
   glRenderbufferStorage: _glRenderbufferStorage,
+  /** @export */
+  glScissor: _glScissor,
   /** @export */
   glShaderSource: _glShaderSource,
   /** @export */
